@@ -20,56 +20,32 @@
   </head> 
   <body>
 
-    <div class="container">
-      <div class="row">
-		{% block menu %}
-		<div class="span8" style="padding-top:20px;"> 
-		<ul class="nav nav-tabs">
-			{% for item in menu %}
-			<li {% if active==item.id %}class="active"{%endif%}><a href="{{item.url}}">{{item.name}}</a></li>
-			{% endfor %}
-		</ul>
-		</div>
-		<div class="span2" style="padding-top:20px;"></div>
-		<div class="span2" style="padding-top:20px;">{%if user.logon%}{{user.nikname}} <a href="{{user.logout_url}}">Sign out</a>{%else%}<a href="{{user.login_url}}">Sign in</a>{%endif%}</div>
-		{% endblock %}
+    
+      
+	{% block menu %}
+	<div class="navbar navbar-static-top">
+	<div class="navbar-inner">
+    <a class="brand" href="#">Router Control</a>
+    <ul class="nav">
+      {% for item in menu %}
+		<li {% if active==item.id %}class="active"{%endif%}><a href="{{item.url}}">{{item.name}}</a></li>
+	  {% endfor %}
+    </ul>
+	<ul class="nav pull-right">
+	<li>{%if user.logon%}{{user.nikname}}<a href="{{user.logout_url}}">Sign out</a>{%else%}<a href="{{user.login_url}}">Sign in</a>{%endif%}</li>
+	</ul>
+	</div>
+	</div>
+	{% endblock %}
+		
+	<div class="container">
+	<div class="row">
 		{% block content %}{% endblock %}
 		{{ raw_content|safe }}
      </div>
 	</div>
     
-    <script type="text/javascript" charset="utf-8">
-      $(document).ready(function() {
-	  $('#actualization').on('click', function (e) {
-			if (!$(this).hasClass("active")) {$(".nonactual").hide();} else {$(".nonactual").show();}
-		});
-		$('#ingarage').on('click', function (e) {
-			if (!$(this).hasClass("active")) {$(".noingarage").hide();} else {$(".noingarage").show();}
-		});
-	  if ($("[rel=tooltip]").length) {
-		$("[rel=tooltip]").tooltip();
-		}
-		$("#tanks").tablecloth({
-          theme: "stats",
-          striped: true,
-          sortable: true,
-          condensed: true
-        });
-	  $("#stats").tablecloth({
-          theme: "default",
-          striped: true,
-          sortable: false,
-          condensed: true
-        });
-        $("#result").tablecloth({
-          theme: "paper",
-          striped: true,
-          sortable: true,
-          condensed: true
-        });
-		
-      });
-    </script> 
+   
   </body>
 </html>
 {% endautoescape %}

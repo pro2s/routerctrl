@@ -45,7 +45,7 @@ MENU = [
     {
     "id":"about",
     "name":u"О системе",
-    "url":"/about/",
+    "url":"/",
     },
     {
     "id":"reg",
@@ -55,7 +55,7 @@ MENU = [
     {
     "id":"index",
     "name":u"Роутер",
-    "url":"/",
+    "url":"/router/",
     },
     {
     "id":"torrent",
@@ -80,6 +80,35 @@ def update_online():
     date = datetime.datetime.now()
     memcache.set('last_online', date , 900)
     
+def CreaetePrefs(user_id):
+    uprefs = UserPrefs()
+    uprefs.userid = user_id
+    uprefs.registred = False
+    uprefs.apikey = "default-" + md5(user["nickname"]).hexdigest() + "-00"
+    uprefs.put()   
+    return uprefs
+
+def user_required(handler):
+    """
+        Decorator for checking if there's a user associated with the current session.
+        Will also fail if there's no session present.
+    """
+    def check_login(self, *args, **kwargs):
+        self.user = users.get_current_user()
+        if self.user :
+            self.uprefs = UserPrefs.query(UserPrefs.userid == self.user.user_id()).get()
+            if self.uprefs is None:
+                self.uprefs = UserPrefs(self.user.user_id())
+            return handler(self, *args, **kwargs)
+        else:
+            # If handler has no login_url specified invoke a 403 error
+            try:
+                self.redirect("/", abort=True)
+            except (AttributeError, KeyError), e:
+                self.abort(403)
+	
+    return check_login
+    
 class BaseHandler(webapp2.RequestHandler):
     def dispatch(self):
         # Get a session store for this request.
@@ -98,72 +127,71 @@ class BaseHandler(webapp2.RequestHandler):
     
     def render_template(self, filename, **template_args):
         user = {}
-        upref = {}
+        uprefs = {}
+        menu = MENU[:2]
         if users.get_current_user() is None:
-            user = {"logon":False, "login_url": users.create_login_url(self.request.uri)}
+            user = {
+            "logon":False,
+            "login_url": users.create_login_url(self.request.uri)
+            }
             MENU[1]["name"] = u"Регистрация"
         else:
-            user = {"logon":True,
-                "email": users.get_current_user().email(),
-                "user_id": users.get_current_user().user_id(),
-                "nickname": users.get_current_user().nickname(),
-                "logout_url": users.create_logout_url("/")}
+            MENU[1]["name"] = u"Данные пользователя"
+            user = {
+            "logon":True,
+            "email": users.get_current_user().email(),
+            "user_id": users.get_current_user().user_id(),
+            "nickname": users.get_current_user().nickname(),
+            "logout_url": users.create_logout_url("/"),
+            }
             uprefs = UserPrefs.query(UserPrefs.userid == user["user_id"]).get()
-            if uprefs:
-                MENU[1]["name"] = u"Данные пользователя"
-            else:
-                uprefs = UserPrefs()
-                uprefs.userid = user.user_id()
-                uprefs.registred = False
-                uprefs.apikey = "router-" + md5(user.nickname()).hexdigest() + "-00"
-                uprefs.put()   
+            if uprefs is None: 
+                uprefs = UserPrefs(user["user_id"])
+            if uprefs.registred:
+                menu = MENU # TODO: Generate menu depends by api-keys  
+                
         template = JINJA_ENVIRONMENT.get_template(filename)
-        html = template.render(uprefs = uprefs, user = user , **template_args)
+        html = template.render(menu = menu, uprefs = uprefs, user = user , **template_args)
         self.response.write(html)
 
 class RegHandler(BaseHandler):        
     def get(self):
-            
-        template_values = {
-        'menu':MENU,
+        context = {
         'active':'reg',
         }
+        self.render_template('user.tpl',**context)
         
-        self.render_template('user.tpl',**template_values)
-        
+    @user_required
+    def post(self):
+        reg = self.request.get("reg", default_value="no")        
+        if reg == "yes":
+            self.uprefs.registred = True
+            self.uprefs.put()   
+        self.redirect("/registration/")    
+
 class AboutHandler(BaseHandler):
     def get(self):
         
-        template_values = {
-        'menu':MENU,
+        context = {
         'active':'about',
         }
         
-        self.render_template('about.tpl',**template_values)
+        self.render_template('about.tpl',**context)
         
 class MainHandler(BaseHandler):
+    @user_required
     def get(self):
-        user = users.get_current_user()
-        
-        if user:
-            login = ('Welcome, %s! (<a href="%s">sign out</a>)' %
-                        (user.nickname(), users.create_logout_url('/')))
-        else:
-            login = ('<a href="%s">Sign in</a>.' % users.create_login_url('/'))
-        
         update_online()
         router = RouterState.query().filter(RouterState.service == "openwrt")
-        template_values = {
-        'menu':MENU,
+        context = {
         'active':'index',
         'router':router,
         'login':login,
         }
-        template = JINJA_ENVIRONMENT.get_template('index.tpl')
-        html = template.render(template_values)
-        self.response.write(html)
+        self.render_template('index.tpl',**context)
 
 class TorrentHandler(BaseHandler):
+    @user_required
     def get(self):
         update_online()
         commands = Commands.query().filter(RouterState.service == "transmission")
@@ -175,21 +203,20 @@ class TorrentHandler(BaseHandler):
         comands_type = {
         'file':u'файл',
         }
-        template_values = {
+        context = {
         'c_name':comands_name,
         'c_type':comands_type,
         'torrent':torrent,
         'torrents':torrents,
         'commands':commands,        
-        'menu':MENU,
         'active':'torrent',
         }
-        template = JINJA_ENVIRONMENT.get_template('torrent.tpl')
-        html = template.render(template_values)
-        self.response.write(html)
-
+        
+        self.render_template('torrent.tpl',**context)
+        
 
 class AddTorrent(webapp2.RequestHandler):
+    @user_required
     def post(self):
         command = Commands()
         command.name = "add"
@@ -201,6 +228,7 @@ class AddTorrent(webapp2.RequestHandler):
         self.redirect("/torrent/")
 
 class TrafikHandler(BaseHandler):
+    @user_required
     def get(self):
         update_online()
         data = RouterState.query(RouterState.service == "openwrt", RouterState.name == "traffic")
@@ -209,15 +237,12 @@ class TrafikHandler(BaseHandler):
         
         if trafik:
             img = '<div class="span12"><img src="data:image/png;base64,'+trafik[0].value+'" alt="" /></div>'
-        template_values = {
-        'menu':MENU,
+        context = {
         'active':'trafik',
         'raw_content':img,
         }
-        template = JINJA_ENVIRONMENT.get_template('base.tpl')
-        html = template.render(template_values)
-        self.response.write(html)
-
+        self.render_template('base.tpl',**context)
+        
 class OnlineHandler(BaseHandler):
     def get(self):
         online_date = memcache.get('last_online')
@@ -234,9 +259,9 @@ config['webapp2_extras.sessions'] = {
     'secret_key': 'some-secret-key',
 }        
 app = webapp2.WSGIApplication([
-    ('/', MainHandler),
+    ('/router/', MainHandler),
     ('/torrent/', TorrentHandler),
-    ('/about/', AboutHandler),
+    ('/', AboutHandler),
     ('/registration/', RegHandler),
     ('/trafik/', TrafikHandler),
     ('/add', AddTorrent),
