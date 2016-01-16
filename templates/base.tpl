@@ -9,13 +9,13 @@
     <link href="/css/bootstrap-responsive.css" rel="stylesheet">
     <link href="/css/tablecloth.css" rel="stylesheet">
     <link href="/css/prettify.css" rel="stylesheet"> 
-    <script src="https://apis.google.com/js/platform.js" async defer></script>
+
     <script src="/js/jquery-1.7.2.min.js"></script>
     <script src="/js/bootstrap.js"></script>
     <script src="/js/jquery.metadata.js"></script>
     <script src="/js/jquery.tablesorter.min.js"></script>
     <script src="/js/jquery.tablecloth.js"></script>
-    <meta name="google-signin-client_id" content="443810668017-alavntuh9v5fp4hbaf0om0miqi6l7tpm.apps.googleusercontent.com">
+
 	{% block head%}{% endblock %}
   </head> 
   <body>
@@ -30,8 +30,8 @@
 			{% endfor %}
 		</ul>
 		</div>
-		<div class="span2" style="padding-top:20px;">{{login}}</div>
-		<div class="span2" style="padding-top:20px;"><div class="g-signin2" data-onsuccess="onSignIn"></div></div>
+		<div class="span2" style="padding-top:20px;"></div>
+		<div class="span2" style="padding-top:20px;">{%if user.logon%}{{user.nikname}} <a href="{{user.logout_url}}">Sign out</a>{%else%}<a href="{{user.login_url}}">Sign in</a>{%endif%}</div>
 		{% endblock %}
 		{% block content %}{% endblock %}
 		{{ raw_content|safe }}

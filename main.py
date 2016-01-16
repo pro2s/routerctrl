@@ -26,6 +26,7 @@ import re
 import jinja2
 import os
 import datetime
+from md5 import md5
 from webapp2_extras import sessions
 
 from google.appengine.api import users
@@ -39,11 +40,12 @@ urlfetch.set_default_fetch_deadline(10)
 JINJA_ENVIRONMENT = jinja2.Environment(
     loader=jinja2.FileSystemLoader([os.path.join(os.path.dirname(__file__),"templates"),],encoding='utf-8'),
     extensions=['jinja2.ext.autoescape'])
+
 MENU = [
     {
     "id":"about",
     "name":u"О системе",
-    "url":"/",
+    "url":"/about/",
     },
     {
     "id":"reg",
@@ -66,8 +68,13 @@ MENU = [
     "url":"/trafik/",
     },
 ]
+
+login  = ""
+
 class UserPrefs(ndb.Model):
     userid = ndb.StringProperty()
+    registred = ndb.BooleanProperty()
+    apikey = ndb.StringProperty()
 
 def update_online():
     date = datetime.datetime.now()
@@ -75,13 +82,6 @@ def update_online():
     
 class BaseHandler(webapp2.RequestHandler):
     def dispatch(self):
-	user = users.get_current_user()
-        if user:
-            login = ('Welcome, %s! (<a href="%s">sign out</a>)' %
-                        (user.nickname(), users.create_logout_url('/')))
-        else:
-            login = ('<a href="%s">Sign in</a>.' % users.create_login_url('/'))
-
         # Get a session store for this request.
         self.session_store = sessions.get_store(request=self.request)
         try:
@@ -95,30 +95,69 @@ class BaseHandler(webapp2.RequestHandler):
     def session(self):
         # Returns a session using the default cookie key.
         return self.session_store.get_session()
+    
+    def render_template(self, filename, **template_args):
+        user = {}
+        upref = {}
+        if users.get_current_user() is None:
+            user = {"logon":False, "login_url": users.create_login_url(self.request.uri)}
+            MENU[1]["name"] = u"Регистрация"
+        else:
+            user = {"logon":True,
+                "email": users.get_current_user().email(),
+                "user_id": users.get_current_user().user_id(),
+                "nickname": users.get_current_user().nickname(),
+                "logout_url": users.create_logout_url("/")}
+            uprefs = UserPrefs.query(UserPrefs.userid == user["user_id"]).get()
+            if uprefs:
+                MENU[1]["name"] = u"Данные пользователя"
+            else:
+                uprefs = UserPrefs()
+                uprefs.userid = user.user_id()
+                uprefs.registred = False
+                uprefs.apikey = "router-" + md5(user.nickname()).hexdigest() + "-00"
+                uprefs.put()   
+        template = JINJA_ENVIRONMENT.get_template(filename)
+        html = template.render(uprefs = uprefs, user = user , **template_args)
+        self.response.write(html)
 
 class RegHandler(BaseHandler):        
     def get(self):
+            
         template_values = {
         'menu':MENU,
         'active':'reg',
         }
-        template = JINJA_ENVIRONMENT.get_template('index.tpl')
-        html = template.render(template_values)
-        self.response.write(html)
-	user = users.get_current_user()
-	if user:
-	    q = UserPrefs()
-	    q.userid = user.user_id()
-	    q.put()
+        
+        self.render_template('user.tpl',**template_values)
+        
+class AboutHandler(BaseHandler):
+    def get(self):
+        
+        template_values = {
+        'menu':MENU,
+        'active':'about',
+        }
+        
+        self.render_template('about.tpl',**template_values)
         
 class MainHandler(BaseHandler):
     def get(self):
+        user = users.get_current_user()
+        
+        if user:
+            login = ('Welcome, %s! (<a href="%s">sign out</a>)' %
+                        (user.nickname(), users.create_logout_url('/')))
+        else:
+            login = ('<a href="%s">Sign in</a>.' % users.create_login_url('/'))
+        
         update_online()
         router = RouterState.query().filter(RouterState.service == "openwrt")
         template_values = {
         'menu':MENU,
         'active':'index',
         'router':router,
+        'login':login,
         }
         template = JINJA_ENVIRONMENT.get_template('index.tpl')
         html = template.render(template_values)
@@ -197,6 +236,7 @@ config['webapp2_extras.sessions'] = {
 app = webapp2.WSGIApplication([
     ('/', MainHandler),
     ('/torrent/', TorrentHandler),
+    ('/about/', AboutHandler),
     ('/registration/', RegHandler),
     ('/trafik/', TrafikHandler),
     ('/add', AddTorrent),
