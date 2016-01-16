@@ -16,28 +16,40 @@
 #
 # -*- coding: utf-8 -*-
 
-from google.appengine.api import users
 from ReSTify.model import *
 import codecs 
 import base64
 import webapp2
 import feedparser
-from google.appengine.api import urlfetch
 import json
 import re
 import jinja2
 import os
 import datetime
 from webapp2_extras import sessions
+
+from google.appengine.api import users
 from google.appengine.api import urlfetch
-urlfetch.set_default_fetch_deadline(10)
+from google.appengine.api import urlfetch
 from google.appengine.api import memcache
 from google.appengine.ext import ndb
+
+urlfetch.set_default_fetch_deadline(10)
 
 JINJA_ENVIRONMENT = jinja2.Environment(
     loader=jinja2.FileSystemLoader([os.path.join(os.path.dirname(__file__),"templates"),],encoding='utf-8'),
     extensions=['jinja2.ext.autoescape'])
 MENU = [
+    {
+    "id":"about",
+    "name":u"О системе",
+    "url":"/",
+    },
+    {
+    "id":"reg",
+    "name":u"Зарегестрироватся",
+    "url":"/registration/",
+    },
     {
     "id":"index",
     "name":u"Роутер",
@@ -54,6 +66,8 @@ MENU = [
     "url":"/trafik/",
     },
 ]
+class UserPrefs(ndb.Model):
+    userid = ndb.StringProperty()
 
 def update_online():
     date = datetime.datetime.now()
@@ -82,7 +96,20 @@ class BaseHandler(webapp2.RequestHandler):
         # Returns a session using the default cookie key.
         return self.session_store.get_session()
 
-        
+class RegHandler(BaseHandler):        
+    def get(self):
+        template_values = {
+        'menu':MENU,
+        'active':'reg',
+        }
+        template = JINJA_ENVIRONMENT.get_template('index.tpl')
+        html = template.render(template_values)
+        self.response.write(html)
+	user = users.get_current_user()
+	if user:
+	    q = UserPrefs()
+	    q.userid = user.user_id()
+	    q.put()
         
 class MainHandler(BaseHandler):
     def get(self):
@@ -170,6 +197,7 @@ config['webapp2_extras.sessions'] = {
 app = webapp2.WSGIApplication([
     ('/', MainHandler),
     ('/torrent/', TorrentHandler),
+    ('/registration/', RegHandler),
     ('/trafik/', TrafikHandler),
     ('/add', AddTorrent),
     ('/online', OnlineHandler),
